@@ -1,0 +1,40 @@
+# ============================================================================
+# blinky_top.qsf  (template -- rename to blinky_top.qsf once pins are filled in)
+#
+# Fill in every PIN_xx placeholder below once you've confirmed:
+#   1. The oscillator's actual FPGA pin (via blink-rate stopwatch test)
+#   2. Which header pins map to which FPGA pins (silkscreen / continuity /
+#      published pinout for this EP2C5T144 board)
+#
+# Device family/part -- confirm exact suffix (speed grade, package) against
+# the marking on your chip, e.g. EP2C5T144C8N.
+# ============================================================================
+
+set_global_assignment -name FAMILY "Cyclone II"
+set_global_assignment -name DEVICE EP2C5T144C8
+
+set_global_assignment -name TOP_LEVEL_ENTITY blinky_top
+
+# --- Clock -------------------------------------------------------------
+# Try pin 17 or pin 23 first (common on this board family) -- confirm with
+# the blink test before trusting this.
+set_location_assignment PIN_17 -to clk
+
+# --- Button --------------------------------------------------------------
+set_location_assignment PIN_TBD -to btn
+
+# --- Switches for AND/OR test -------------------------------------------
+set_location_assignment PIN_TBD -to sw_a
+set_location_assignment PIN_TBD -to sw_b
+
+# --- LEDs ----------------------------------------------------------------
+set_location_assignment PIN_TBD -to led_blink
+set_location_assignment PIN_TBD -to led_btn
+
+# --- Combinational test outputs (route to spare header pins + LED/scope) -
+set_location_assignment PIN_TBD -to and_out
+set_location_assignment PIN_TBD -to or_out
+
+# --- I/O standard (default is usually fine for this board; uncomment if
+#     you need to force it explicitly per-pin) ---------------------------
+# set_instance_assignment -name IO_STANDARD "2.5 V" -to clk
