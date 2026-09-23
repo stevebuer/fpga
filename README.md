@@ -1,5 +1,10 @@
-# FPGA Development boards
+# Verilog and FPGA Projects
 
-Altera Cyclone II FPGA development board from eBay (aprox. $30)
+* Icarus Verilog
+* Intel Quartus
+* AMD Vivado
 
-This board requires Intel Quartus II Web Edition 13.1
+## Boards
+
+* Altera Cyclone II minimal board (requires Intel Quartus II Web Edition 13.1)
+* RealDigital Blackboard
