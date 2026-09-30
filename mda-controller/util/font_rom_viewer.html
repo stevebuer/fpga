@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Font ROM Viewer</title>
+<style>
+:root{
+  --bg:#f7f7f5; --panel:#fff; --ink:#1a1a1a; --sub:#6b6b6b; --line:#ddd;
+  --accent:#2563eb; --pixel:#1a1a1a; --pixel-off:#eee;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15161a; --panel:#1e2027; --ink:#eee; --sub:#9a9a9a; --line:#33353c;
+    --accent:#60a5fa; --pixel:#eee; --pixel-off:#2a2c33;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15161a; --panel:#1e2027; --ink:#eee; --sub:#9a9a9a; --line:#33353c;
+  --accent:#60a5fa; --pixel:#eee; --pixel-off:#2a2c33;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink);font-family:ui-monospace,Menlo,Consolas,monospace;margin:0}
+body{padding:20px}
+h1{font-size:16px;margin:0 0 4px}
+.sub{color:var(--sub);font-size:12px;margin-bottom:16px}
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:16px}
+label{font-size:12px;color:var(--sub)}
+select,input[type=file]{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.layout{display:flex;gap:16px;flex-wrap:wrap}
+.grid-wrap{flex:1;min-width:280px;overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px}
+#grid{display:grid;grid-template-columns:repeat(16,minmax(28px,1fr));gap:2px}
+.cell{border:1px solid var(--line);border-radius:3px;padding:2px;cursor:pointer;text-align:center}
+.cell:hover{border-color:var(--accent)}
+.cell canvas{display:block;image-rendering:pixelated;width:100%;height:auto}
+.cell .idx{font-size:8px;color:var(--sub)}
+.detail{width:260px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px}
+.detail canvas{image-rendering:pixelated;border:1px solid var(--line);border-radius:6px;width:100%;height:auto;margin-bottom:10px}
+.rows{font-size:11px;line-height:1.5;color:var(--sub);white-space:pre}
+.hint{font-size:12px;color:var(--sub)}
+</style>
+</head>
+<body>
+<h1>Font ROM Viewer</h1>
+<div class="sub">Load a raw binary font file (e.g. BIOS.F08) or a .hex file (one hex byte per line/whitespace-separated).</div>
+
+<div class="controls">
+  <input type="file" id="file">
+  <label>Glyph height (bytes/char):
+    <select id="height">
+      <option value="8">8</option>
+      <option value="9">9</option>
+      <option value="14">14</option>
+      <option value="16">16</option>
+    </select>
+  </label>
+  <span class="hint" id="status">No file loaded</span>
+</div>
+
+<div class="layout">
+  <div class="grid-wrap"><div id="grid"></div></div>
+  <div class="detail">
+    <div class="hint" id="sel">Click a glyph</div>
+    <canvas id="zoom" width="80" height="80"></canvas>
+    <div class="rows" id="bits"></div>
+  </div>
+</div>
+
+<script>
+let bytes = null;
+
+function parseHex(text){
+  const parts = text.split(/\s+/).filter(Boolean);
+  return new Uint8Array(parts.map(p => parseInt(p,16)));
+}
+
+function isLikelyText(buf){
+  // crude check: if >90% of bytes are printable ASCII/whitespace, treat as hex text
+  let printable = 0;
+  for (let i=0;i<Math.min(buf.length,200);i++){
+    const b = buf[i];
+    if ((b>=32 && b<127) || b===10 || b===13 || b===9) printable++;
+  }
+  return printable / Math.min(buf.length,200) > 0.9;
+}
+
+document.getElementById('file').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    const buf = new Uint8Array(await f.arrayBuffer());
+    if (isLikelyText(buf)) {
+      bytes = parseHex(new TextDecoder().decode(buf));
+    } else {
+      bytes = buf;
+    }
+    document.getElementById('status').textContent = `${f.name} — ${bytes.length} bytes loaded`;
+    render();
+  } catch(err) {
+    document.getElementById('status').textContent = 'Error reading file: ' + err.message;
+  }
+});
+
+document.getElementById('height').addEventListener('change', render);
+
+function render(){
+  if (!bytes) return;
+  const h = parseInt(document.getElementById('height').value, 10);
+  const count = Math.floor(bytes.length / h);
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  for (let c = 0; c < count; c++){
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const canvas = document.createElement('canvas');
+    canvas.width = 8; canvas.height = h;
+    drawGlyph(canvas, c, h);
+    const idx = document.createElement('div');
+    idx.className = 'idx';
+    idx.textContent = '0x' + c.toString(16).toUpperCase().padStart(2,'0');
+    cell.appendChild(canvas);
+    cell.appendChild(idx);
+    cell.addEventListener('click', () => showDetail(c, h));
+    grid.appendChild(cell);
+  }
+  document.getElementById('status').textContent = `${bytes.length} bytes — ${count} glyphs @ ${h} rows`;
+}
+
+function glyphRows(charIndex, h){
+  const start = charIndex * h;
+  const rows = [];
+  for (let r = 0; r < h; r++) rows.push(bytes[start + r] ?? 0);
+  return rows;
+}
+
+function drawGlyph(canvas, charIndex, h){
+  const ctx = canvas.getContext('2d');
+  const rows = glyphRows(charIndex, h);
+  const img = ctx.createImageData(8, h);
+  for (let r = 0; r < h; r++){
+    for (let col = 0; col < 8; col++){
+      const bit = (rows[r] >> (7 - col)) & 1;
+      const off = (r*8+col)*4;
+      const v = bit ? 20 : 235;
+      img.data[off]=v; img.data[off+1]=v; img.data[off+2]=v; img.data[off+3]=255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function showDetail(charIndex, h){
+  const rows = glyphRows(charIndex, h);
+  document.getElementById('sel').textContent =
+    `Char 0x${charIndex.toString(16).toUpperCase().padStart(2,'0')} (${charIndex >= 32 && charIndex < 127 ? "'"+String.fromCharCode(charIndex)+"'" : 'n/a'})`;
+
+  const zoom = document.getElementById('zoom');
+  const scale = 8;
+  zoom.width = 8*scale; zoom.height = h*scale;
+  const ctx = zoom.getContext('2d');
+  for (let r = 0; r < h; r++){
+    for (let col = 0; col < 8; col++){
+      const bit = (rows[r] >> (7 - col)) & 1;
+      ctx.fillStyle = bit ? getVar('--pixel') : getVar('--pixel-off');
+      ctx.fillRect(col*scale, r*scale, scale, scale);
+    }
+  }
+
+  let bitsText = '';
+  rows.forEach((byte, r) => {
+    const bin = byte.toString(2).padStart(8,'0').replace(/0/g,'.').replace(/1/g,'#');
+    bitsText += `row ${String(r).padStart(2)}  0x${byte.toString(16).toUpperCase().padStart(2,'0')}  ${bin}\n`;
+  });
+  document.getElementById('bits').textContent = bitsText;
+}
+
+function getVar(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+</script>
+</body>
+</html>
